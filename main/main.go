@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/signal"
 
 	"github.com/drkaka/lg"
 	"github.com/goinout/goinout"
@@ -20,31 +21,40 @@ func main() {
 			Usage: "starting with debug model",
 		},
 		cli.StringFlag{
-			Name:  "input, i",
-			Usage: "input folder path",
-			Value: "./input",
+			Name:  "inputs, i",
+			Usage: "inputs folder path",
+			Value: "./inputs",
 		},
 		cli.StringFlag{
-			Name:  "output, o",
-			Usage: "output folder path",
-			Value: "./output",
+			Name:  "outputs, o",
+			Usage: "outputs folder path",
+			Value: "./outputs",
 		},
 	}
 
 	app.Action = func(c *cli.Context) error {
 		// set the input folder
-		inputPath := c.GlobalString("input")
+		inputPath := c.GlobalString("inputs")
 		if _, err := os.Stat(inputPath); os.IsNotExist(err) {
 			os.Mkdir(inputPath, os.ModePerm)
 		}
 
 		// set the output folder
-		outputPath := c.GlobalString("output")
+		outputPath := c.GlobalString("outputs")
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			os.Mkdir(outputPath, os.ModePerm)
 		}
 
 		goinout.Start(inputPath, outputPath)
+
+		// wait for os.Interrupt to quit
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, os.Interrupt)
+
+		select {
+		case <-sigs:
+		}
+
 		return nil
 	}
 

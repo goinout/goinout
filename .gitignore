@@ -15,4 +15,7 @@
 
 vendor
 
-main/goinout
+main/goinout*
+
+inputs
+outputs
