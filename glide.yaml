@@ -6,3 +6,7 @@ import:
   version: ^1.19.1
 - package: github.com/fsnotify/fsnotify
   version: "*"
+testImport:
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
