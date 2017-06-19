@@ -1,59 +1,21 @@
 package goinout
 
 import (
-	"context"
-	"fmt"
-	"io/ioutil"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/drkaka/lg"
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 )
 
-type inputStruct struct {
-	all map[string]context.CancelFunc
-	l   *sync.RWMutex
-}
-
-type outputStruct struct {
-	all map[string]OutputFunc
-	l   *sync.RWMutex
-}
-
-var (
-	inputsPath  string
-	outputsPath string
-
-	inputs  *inputStruct
-	outputs *outputStruct
-
-	ctx context.Context
-)
-
-func init() {
-	inputs = &inputStruct{
-		all: make(map[string]context.CancelFunc, 0),
-		l:   new(sync.RWMutex),
-	}
-
-	outputs = &outputStruct{
-		all: make(map[string]OutputFunc, 0),
-		l:   new(sync.RWMutex),
-	}
-
-	ctx = context.Background()
-}
-
 // Start the service
 func Start(input, output string) {
 	inputsPath = input
 	outputsPath = output
 
-	loadOutputs()
-	loadInputs()
+	getOutputPlugins()
+	startInputPlugins()
 
 	observeInputs()
 	observeOutputs()
@@ -71,108 +33,6 @@ func extOK(file string) bool {
 
 func pluginName(file string) string {
 	return strings.TrimSuffix(file, filepath.Ext(file))
-}
-
-func loadInputs() {
-	files, err := ioutil.ReadDir(inputsPath)
-	if err != nil {
-		panic(err)
-	}
-	lg.L(nil).Debug("load inputs", zap.Int("count", len(files)))
-
-	for _, file := range files {
-		fmt.Println(file.Name())
-	}
-}
-
-func loadOutputs() {
-	files, err := ioutil.ReadDir(outputsPath)
-	if err != nil {
-		panic(err)
-	}
-	lg.L(nil).Debug("load outputs", zap.Int("count", len(files)))
-	for _, file := range files {
-		fileName := file.Name()
-		if !extOK(fileName) {
-			lg.L(nil).Debug("not a valid output", zap.String("file", fileName))
-			continue
-		}
-		addOutput(fileName)
-	}
-}
-
-func addInput(plugin string) {
-	lg.L(nil).Debug("input plugin add", zap.String("plugin", plugin))
-
-}
-
-func reloadInput(plugin string) {
-	lg.L(nil).Debug("input plugin reload", zap.String("plugin", plugin))
-}
-
-func renameInput(from, to string) {
-	lg.L(nil).Debug("input plugin rename", zap.String("from", from), zap.String("to", to))
-}
-
-func deleteInput(plugin string) {
-	lg.L(nil).Debug("input plugin delete", zap.String("plugin", plugin))
-}
-
-func addOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin add", zap.String("plugin", plugin))
-
-	fn, err := loadOutput(plugin)
-	if err != nil {
-		lg.L(nil).Warn("add output error", zap.Error(err))
-	} else {
-		outputs.l.Lock()
-		outputs.all[pluginName(plugin)] = fn
-		outputs.l.Unlock()
-	}
-}
-
-func reloadOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin reload", zap.String("plugin", plugin))
-
-	fn, err := loadOutput(plugin)
-	if err != nil {
-		lg.L(nil).Warn("load output error", zap.Error(err))
-	} else {
-		outputs.l.Lock()
-		outputs.all[pluginName(plugin)] = fn
-		outputs.l.Unlock()
-	}
-}
-
-func renameOutput(from, to string) {
-	lg.L(nil).Debug("Output plugin rename", zap.String("from", from), zap.String("to", to))
-
-	fn, ok := outputs.all[pluginName(from)]
-	if !ok {
-		lg.L(nil).Warn("can't rename missing old name")
-		return
-	}
-
-	outputs.l.Lock()
-	delete(outputs.all, pluginName(from))
-	outputs.all[pluginName(to)] = fn
-	outputs.l.Unlock()
-}
-
-func deleteOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin delete", zap.String("plugin", plugin))
-
-	outputs.l.Lock()
-	delete(outputs.all, pluginName(plugin))
-	outputs.l.Unlock()
-}
-
-func observeInputs() {
-	observe(inputsPath, addInput, reloadInput, deleteInput, renameInput)
-}
-
-func observeOutputs() {
-	observe(outputsPath, addOutput, reloadOutput, deleteOutput, renameOutput)
 }
 
 func observe(folderPath string, add, reload, delete func(string), rename func(string, string)) {
@@ -196,6 +56,7 @@ func observe(folderPath string, add, reload, delete func(string), rename func(st
 					reload(fileName)
 				} else if ev.Op&fsnotify.Rename == fsnotify.Rename {
 					from := fileName
+					// Rename event should have a follow-up create event
 					addEV := <-watcher.Events
 					if addEV.Op&fsnotify.Create != fsnotify.Create {
 						lg.L(nil).Error("Expecting create event", zap.Any("event", addEV))
