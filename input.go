@@ -13,8 +13,13 @@ import (
 	"go.uber.org/zap"
 )
 
+type inputRecord struct {
+	cancelFn context.CancelFunc
+	ctx      context.Context
+}
+
 type inputStruct struct {
-	all map[string]context.CancelFunc
+	all map[string]*inputRecord
 	l   *sync.RWMutex
 }
 
@@ -31,13 +36,13 @@ var (
 
 func init() {
 	inputs = &inputStruct{
-		all: make(map[string]context.CancelFunc, 0),
+		all: make(map[string]*inputRecord, 0),
 		l:   new(sync.RWMutex),
 	}
 }
 
 func observeInputs() {
-	observe(inputsPath, addInput, reloadInput, deleteInput, renameInput)
+	observe(inputsPath, loadInput, deleteInput, renameInput)
 }
 
 func startInputPlugins() {
@@ -48,7 +53,7 @@ func startInputPlugins() {
 	lg.L(nil).Debug("load inputs", zap.Int("found", len(files)))
 
 	for _, file := range files {
-		loadInput(file.Name())
+		loadPlugin(filepath.Join(inputsPath, file.Name()), loadInput)
 	}
 
 	inputs.l.RLock()
@@ -57,79 +62,75 @@ func startInputPlugins() {
 }
 
 // loadInput plugin and start
-func loadInput(fileName string) {
-	if !extOK(fileName) {
-		lg.L(nil).Debug("invalid input ext", zap.String("file", fileName))
-		return
-	}
-
-	f := filepath.Join(inputsPath, fileName)
-	p, err := plugin.Open(f)
+//
+// name is string without ext
+func loadInput(plug *plugin.Plugin, name string) {
+	// Extract the Exchange function
+	fn, err := plug.Lookup("Exchange")
 	if err != nil {
-		lg.L(nil).Warn("input plugin open failed", zap.Error(err))
+		lg.L(nil).Warn("input plugin Exchange func not found", zap.Error(err))
 		return
 	}
 
-	fn, err := p.Lookup("Start")
-	if err != nil {
-		lg.L(nil).Warn("input plugin lookup failed", zap.Error(err))
-		return
-	}
-
-	inputFn, ok := fn.(func(context.Context, OutputGetter))
+	exchangeCtx, ok := fn.(func(context.Context) context.Context)
 	if !ok {
-		lg.L(nil).Debug("wrong input type", zap.Any("type", reflect.TypeOf(inputFn)))
+		lg.L(nil).Debug("wrong input Exchange type", zap.Any("type", reflect.TypeOf(fn)))
 		lg.L(nil).Warn(ErrInputTypeWrong.Error())
 		return
 	}
 
-	// start the input
+	// Extract the Start function
+	fn, err = plug.Lookup("Start")
+	if err != nil {
+		lg.L(nil).Warn("input plugin Start func not found", zap.Error(err))
+		return
+	}
+
+	inputFn, ok := fn.(func(func(string) func(map[string]interface{}) error))
+	if !ok {
+		lg.L(nil).Debug("wrong input Start type", zap.Any("type", reflect.TypeOf(inputFn)))
+		lg.L(nil).Warn(ErrInputTypeWrong.Error())
+		return
+	}
+
+	// stop the old if exist
+	var old *inputRecord
+
+	inputs.l.RLock()
+	old = inputs.all[name]
+	inputs.l.RUnlock()
+
+	if old != nil {
+		old.cancelFn()
+		if old.ctx != nil {
+			// wait until done
+			<-old.ctx.Done()
+		}
+	}
+	lg.L(nil).Debug("old input stopped", zap.String("plugin", name))
+
+	// create the new one
 	inputContext, cancelFunc := context.WithCancel(context.Background())
-	go inputFn(inputContext, getOutputFunc)
+	stopContext := exchangeCtx(inputContext)
 
 	inputs.l.Lock()
-	inputs.all[pluginName(fileName)] = cancelFunc
+	inputs.all[name] = &inputRecord{
+		cancelFn: cancelFunc,
+		ctx:      stopContext,
+	}
 	inputs.l.Unlock()
 
-	lg.L(nil).Debug("input plugin successfully loaded and started", zap.String("plugin", fileName))
-}
+	// start the input
+	go inputFn(getOutputFunc)
 
-func addInput(plugin string) {
-	lg.L(nil).Debug("input plugin add event", zap.String("plugin", plugin))
-
-	inputs.l.RLock()
-	cancel, ok := inputs.all[pluginName(plugin)]
-	inputs.l.RUnlock()
-
-	// if name existed, cancel it and load
-	if ok {
-		lg.L(nil).Warn("already existed")
-		cancel()
-	}
-	loadInput(plugin)
-}
-
-func reloadInput(plugin string) {
-	lg.L(nil).Debug("input plugin reload event", zap.String("plugin", plugin))
-
-	inputs.l.RLock()
-	cancel, ok := inputs.all[pluginName(plugin)]
-	inputs.l.RUnlock()
-
-	// if name existed, cancel it and load
-	if ok {
-		cancel()
-	} else {
-		lg.L(nil).Warn("not existed")
-	}
-	loadInput(plugin)
+	lg.L(nil).Debug("input plugin successfully loaded and started", zap.String("plugin", name))
 }
 
 func renameInput(from, to string) {
 	lg.L(nil).Debug("input plugin rename event", zap.String("from", from), zap.String("to", to))
 
 	inputs.l.RLock()
-	fn, ok := inputs.all[pluginName(from)]
+	fn, ok := inputs.all[from]
 	inputs.l.RUnlock()
 
 	if !ok {
@@ -139,24 +140,24 @@ func renameInput(from, to string) {
 
 	// delete the old key and assign to the new key
 	inputs.l.Lock()
-	delete(inputs.all, pluginName(from))
-	inputs.all[pluginName(to)] = fn
+	delete(inputs.all, from)
+	inputs.all[to] = fn
 	inputs.l.Unlock()
 }
 
-func deleteInput(plugin string) {
-	lg.L(nil).Debug("input plugin delete event", zap.String("plugin", plugin))
+func deleteInput(name string) {
+	lg.L(nil).Debug("input plugin delete event", zap.String("plugin", name))
 
 	inputs.l.RLock()
-	cancel, ok := inputs.all[pluginName(plugin)]
+	record, ok := inputs.all[name]
 	inputs.l.RUnlock()
 
 	if ok {
 		// stop and delete the record
-		cancel()
+		record.cancelFn()
 
 		inputs.l.Lock()
-		delete(inputs.all, pluginName(plugin))
+		delete(inputs.all, name)
 		inputs.l.Unlock()
 	} else {
 		lg.L(nil).Warn("missing input plugin name")

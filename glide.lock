@@ -1,12 +1,12 @@
-hash: df23e5ab23cc9fb85c332637944725e9a47ae110d359e249482ab3ca6ad27ec5
-updated: 2017-06-19T11:22:05.577183+08:00
+hash: 212f07d1480cea8dd5104a3c6b0159f6137debff6af22d8561d729e929aa0ce1
+updated: 2017-06-26T17:55:44.3577064+08:00
 imports:
 - name: github.com/drkaka/lg
   version: 2da913ec4fcfd0f6774de89b4e24a5200a1845b2
 - name: github.com/drkaka/ulid
   version: a4078d88d430f7f5c443e60820664d0eef7a1cc8
-- name: github.com/fsnotify/fsnotify
-  version: 629574ca2a5df945712d3079857300b5e4da0236
+- name: github.com/rjeczalik/notify
+  version: 88a54d914928e1faebb1c2195605dc87bd98dc27
 - name: github.com/urfave/cli
   version: 0bdeddeeb0f650497d603c4ad7b20cfe685682f6
 - name: go.uber.org/atomic
@@ -21,7 +21,7 @@ imports:
   - internal/multierror
   - zapcore
 - name: golang.org/x/sys
-  version: fb4cac33e3196ff7f507ab9b2d2a44b0142f5b5a
+  version: c23410a886927bab8ca5e80b08af6a56faeb330d
   subpackages:
   - unix
 testImports:

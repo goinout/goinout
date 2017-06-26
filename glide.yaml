@@ -4,8 +4,7 @@ import:
   version: ^1.0.0
 - package: github.com/urfave/cli
   version: ^1.19.1
-- package: github.com/fsnotify/fsnotify
-  version: "*"
+- package: github.com/rjeczalik/notify
 testImport:
 - package: github.com/stretchr/testify
   subpackages:

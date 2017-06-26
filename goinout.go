@@ -2,12 +2,15 @@ package goinout
 
 import (
 	"path/filepath"
+	"plugin"
 	"strings"
 
 	"github.com/drkaka/lg"
-	"github.com/fsnotify/fsnotify"
+	"github.com/rjeczalik/notify"
 	"go.uber.org/zap"
 )
+
+type loadFunc func(*plugin.Plugin, string)
 
 // Start the service
 func Start(input, output string) {
@@ -35,47 +38,56 @@ func pluginName(file string) string {
 	return strings.TrimSuffix(file, filepath.Ext(file))
 }
 
-func observe(folderPath string, add, reload, delete func(string), rename func(string, string)) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		panic(err)
+func loadPlugin(file string, load loadFunc) {
+	if !extOK(file) {
+		lg.L(nil).Debug("invalid input ext", zap.String("file", file))
+		return
 	}
+
+	p, err := plugin.Open(file)
+	if err != nil {
+		lg.L(nil).Error("open file wrong", zap.Error(err))
+		return
+	}
+
+	load(p, pluginName(filepath.Base(file)))
+}
+
+func observe(folderPath string, load loadFunc, delete func(string), rename func(string, string)) {
+	c := make(chan notify.EventInfo, 1)
+
+	if err := notify.Watch(folderPath, c, notify.InCloseWrite, notify.InDelete, notify.InMovedTo, notify.InMovedFrom); err != nil {
+		lg.L(nil).Panic("watcher wrong", zap.Error(err))
+	}
+	defer notify.Stop(c)
 
 	// Process events
 	go func() {
 		for {
-			select {
-			case ev := <-watcher.Events:
-				fileName := filepath.Base(ev.Name)
-				if !extOK(fileName) {
-					continue
-				}
-				if ev.Op&fsnotify.Create == fsnotify.Create {
-					add(fileName)
-				} else if ev.Op&fsnotify.Write == fsnotify.Write {
-					reload(fileName)
-				} else if ev.Op&fsnotify.Rename == fsnotify.Rename {
-					from := fileName
-					// Rename event should have a follow-up create event
-					addEV := <-watcher.Events
-					if addEV.Op&fsnotify.Create != fsnotify.Create {
-						lg.L(nil).Error("Expecting create event", zap.Any("event", addEV))
-					} else {
-						to := filepath.Base(addEV.Name)
-						if extOK(to) {
-							rename(from, to)
-						}
+			ei := <-c
+			fileName := filepath.Base(ei.Path())
+			name := pluginName(fileName)
+
+			switch ei.Event() {
+			case notify.InDelete:
+				delete(name)
+			case notify.InCloseWrite:
+				loadPlugin(ei.Path(), load)
+			case notify.InMovedTo:
+				// Rename event should have a follow-up InMovedFrom event
+				fromEV := <-c
+				if fromEV.Event() != notify.InMovedFrom {
+					lg.L(nil).Error("Expecting create event", zap.Any("event", fromEV))
+				} else {
+					from := pluginName(filepath.Base(fromEV.Path()))
+					if extOK(from) {
+						rename(from, name)
 					}
-				} else if ev.Op&fsnotify.Remove == fsnotify.Remove {
-					delete(fileName)
 				}
-			case err := <-watcher.Errors:
-				lg.L(nil).Error("error", zap.Error(err))
+			case notify.InMovedFrom:
+				// actually a delete event, because maybe move to Trash
+				delete(name)
 			}
 		}
 	}()
-
-	if err := watcher.Add(folderPath); err != nil {
-		panic(err)
-	}
 }

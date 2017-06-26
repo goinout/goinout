@@ -21,7 +21,7 @@ type outputStruct struct {
 type OutputGetter func(string) OutputFunc
 
 // OutputFunc type
-type OutputFunc func(map[string]interface{}, []byte) error
+type OutputFunc func(map[string]interface{}) error
 
 var (
 	//ErrOutputTypeWrong error
@@ -39,7 +39,7 @@ func init() {
 }
 
 func observeOutputs() {
-	observe(outputsPath, addOutput, reloadOutput, deleteOutput, renameOutput)
+	observe(outputsPath, loadOutput, deleteOutput, renameOutput)
 }
 
 func getOutputPlugins() {
@@ -49,7 +49,7 @@ func getOutputPlugins() {
 	}
 	lg.L(nil).Debug("load outputs", zap.Int("found", len(files)))
 	for _, file := range files {
-		addOutput(file.Name())
+		loadPlugin(filepath.Join(outputsPath, file.Name()), loadOutput)
 	}
 
 	outputs.l.RLock()
@@ -57,7 +57,7 @@ func getOutputPlugins() {
 	outputs.l.RUnlock()
 }
 
-func getOutputFunc(name string) OutputFunc {
+func getOutputFunc(name string) func(map[string]interface{}) error {
 	outputs.l.RLock()
 	fn := outputs.all[name]
 	outputs.l.RUnlock()
@@ -65,26 +65,14 @@ func getOutputFunc(name string) OutputFunc {
 	return fn
 }
 
-func loadOutput(fileName string) {
-	if !extOK(fileName) {
-		lg.L(nil).Debug("invalid output ext", zap.String("file", fileName))
-		return
-	}
-
-	f := filepath.Join(outputsPath, fileName)
-	p, err := plugin.Open(f)
-	if err != nil {
-		lg.L(nil).Warn("output plugin open failed", zap.Error(err))
-		return
-	}
-
-	fn, err := p.Lookup("Handle")
+func loadOutput(plug *plugin.Plugin, name string) {
+	fn, err := plug.Lookup("Handle")
 	if err != nil {
 		lg.L(nil).Warn("output plugin lookup failed", zap.Error(err))
 		return
 	}
 
-	outputFn, ok := fn.(func(map[string]interface{}, []byte) error)
+	outputFn, ok := fn.(func(map[string]interface{}) error)
 	if !ok {
 		lg.L(nil).Debug("wrong ouput type", zap.Any("type", reflect.TypeOf(outputFn)))
 		lg.L(nil).Warn(ErrOutputTypeWrong.Error())
@@ -92,27 +80,17 @@ func loadOutput(fileName string) {
 	}
 
 	outputs.l.Lock()
-	outputs.all[pluginName(fileName)] = outputFn
+	outputs.all[name] = outputFn
 	outputs.l.Unlock()
 
-	lg.L(nil).Debug("output plugin successfully loaded and added", zap.String("plugin", fileName))
-}
-
-func addOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin add event", zap.String("plugin", plugin))
-	loadOutput(plugin)
-}
-
-func reloadOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin reload event", zap.String("plugin", plugin))
-	loadOutput(plugin)
+	lg.L(nil).Debug("output plugin successfully loaded and added", zap.String("plugin", name))
 }
 
 func renameOutput(from, to string) {
 	lg.L(nil).Debug("Output plugin rename event", zap.String("from", from), zap.String("to", to))
 
 	outputs.l.RLock()
-	fn, ok := outputs.all[pluginName(from)]
+	fn, ok := outputs.all[from]
 	outputs.l.RUnlock()
 
 	if !ok {
@@ -121,15 +99,15 @@ func renameOutput(from, to string) {
 	}
 
 	outputs.l.Lock()
-	delete(outputs.all, pluginName(from))
-	outputs.all[pluginName(to)] = fn
+	delete(outputs.all, from)
+	outputs.all[to] = fn
 	outputs.l.Unlock()
 }
 
-func deleteOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin delete event", zap.String("plugin", plugin))
+func deleteOutput(name string) {
+	lg.L(nil).Debug("Output plugin delete event", zap.String("plugin", name))
 
 	outputs.l.Lock()
-	delete(outputs.all, pluginName(plugin))
+	delete(outputs.all, name)
 	outputs.l.Unlock()
 }
