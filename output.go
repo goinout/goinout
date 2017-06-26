@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"plugin"
+	"reflect"
 	"sync"
 
 	"github.com/drkaka/lg"
@@ -46,10 +47,22 @@ func getOutputPlugins() {
 	if err != nil {
 		panic(err)
 	}
-	lg.L(nil).Debug("load outputs", zap.Int("count", len(files)))
+	lg.L(nil).Debug("load outputs", zap.Int("found", len(files)))
 	for _, file := range files {
 		addOutput(file.Name())
 	}
+
+	outputs.l.RLock()
+	lg.L(nil).Info("outputs loaded", zap.Any("plugins", reflect.ValueOf(outputs.all).MapKeys()))
+	outputs.l.RUnlock()
+}
+
+func getOutputFunc(name string) OutputFunc {
+	outputs.l.RLock()
+	fn := outputs.all[name]
+	outputs.l.RUnlock()
+
+	return fn
 }
 
 func loadOutput(fileName string) {
@@ -71,8 +84,9 @@ func loadOutput(fileName string) {
 		return
 	}
 
-	outputFn, ok := fn.(OutputFunc)
+	outputFn, ok := fn.(func(map[string]interface{}, []byte) error)
 	if !ok {
+		lg.L(nil).Debug("wrong ouput type", zap.Any("type", reflect.TypeOf(outputFn)))
 		lg.L(nil).Warn(ErrOutputTypeWrong.Error())
 		return
 	}
@@ -82,14 +96,6 @@ func loadOutput(fileName string) {
 	outputs.l.Unlock()
 
 	lg.L(nil).Debug("output plugin successfully loaded and added", zap.String("plugin", fileName))
-}
-
-func getOutputFunc(name string) OutputFunc {
-	outputs.l.RLock()
-	fn := outputs.all[name]
-	outputs.l.RUnlock()
-
-	return fn
 }
 
 func addOutput(plugin string) {

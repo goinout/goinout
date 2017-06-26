@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"plugin"
+	"reflect"
 	"sync"
 
 	"github.com/drkaka/lg"
@@ -44,11 +45,15 @@ func startInputPlugins() {
 	if err != nil {
 		panic(err)
 	}
-	lg.L(nil).Debug("load inputs", zap.Int("count", len(files)))
+	lg.L(nil).Debug("load inputs", zap.Int("found", len(files)))
 
 	for _, file := range files {
 		loadInput(file.Name())
 	}
+
+	inputs.l.RLock()
+	lg.L(nil).Info("inputs loaded", zap.Any("plugins", reflect.ValueOf(inputs.all).MapKeys()))
+	inputs.l.RUnlock()
 }
 
 // loadInput plugin and start
@@ -73,6 +78,7 @@ func loadInput(fileName string) {
 
 	inputFn, ok := fn.(func(context.Context, OutputGetter))
 	if !ok {
+		lg.L(nil).Debug("wrong input type", zap.Any("type", reflect.TypeOf(inputFn)))
 		lg.L(nil).Warn(ErrInputTypeWrong.Error())
 		return
 	}
