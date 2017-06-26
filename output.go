@@ -71,7 +71,7 @@ func loadOutput(fileName string) {
 		return
 	}
 
-	outputFn, ok := fn.(func(map[string]interface{}, []byte) error)
+	outputFn, ok := fn.(OutputFunc)
 	if !ok {
 		lg.L(nil).Warn(ErrOutputTypeWrong.Error())
 		return
