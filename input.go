@@ -3,7 +3,6 @@ package goinout
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"plugin"
@@ -48,7 +47,7 @@ func startInputPlugins() {
 	lg.L(nil).Debug("load inputs", zap.Int("count", len(files)))
 
 	for _, file := range files {
-		fmt.Println(file.Name())
+		loadInput(file.Name())
 	}
 }
 
@@ -85,10 +84,12 @@ func loadInput(fileName string) {
 	inputs.l.Lock()
 	inputs.all[pluginName(fileName)] = cancelFunc
 	inputs.l.Unlock()
+
+	lg.L(nil).Debug("input plugin successfully loaded and started", zap.String("plugin", fileName))
 }
 
 func addInput(plugin string) {
-	lg.L(nil).Debug("input plugin add", zap.String("plugin", plugin))
+	lg.L(nil).Debug("input plugin add event", zap.String("plugin", plugin))
 
 	inputs.l.RLock()
 	cancel, ok := inputs.all[pluginName(plugin)]
@@ -103,7 +104,7 @@ func addInput(plugin string) {
 }
 
 func reloadInput(plugin string) {
-	lg.L(nil).Debug("input plugin reload", zap.String("plugin", plugin))
+	lg.L(nil).Debug("input plugin reload event", zap.String("plugin", plugin))
 
 	inputs.l.RLock()
 	cancel, ok := inputs.all[pluginName(plugin)]
@@ -119,7 +120,7 @@ func reloadInput(plugin string) {
 }
 
 func renameInput(from, to string) {
-	lg.L(nil).Debug("input plugin rename", zap.String("from", from), zap.String("to", to))
+	lg.L(nil).Debug("input plugin rename event", zap.String("from", from), zap.String("to", to))
 
 	inputs.l.RLock()
 	fn, ok := inputs.all[pluginName(from)]
@@ -138,7 +139,7 @@ func renameInput(from, to string) {
 }
 
 func deleteInput(plugin string) {
-	lg.L(nil).Debug("input plugin delete", zap.String("plugin", plugin))
+	lg.L(nil).Debug("input plugin delete event", zap.String("plugin", plugin))
 
 	inputs.l.RLock()
 	cancel, ok := inputs.all[pluginName(plugin)]

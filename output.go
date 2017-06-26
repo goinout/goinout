@@ -80,6 +80,8 @@ func loadOutput(fileName string) {
 	outputs.l.Lock()
 	outputs.all[pluginName(fileName)] = outputFn
 	outputs.l.Unlock()
+
+	lg.L(nil).Debug("output plugin successfully loaded and added", zap.String("plugin", fileName))
 }
 
 func getOutputFunc(name string) OutputFunc {
@@ -91,17 +93,17 @@ func getOutputFunc(name string) OutputFunc {
 }
 
 func addOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin add", zap.String("plugin", plugin))
+	lg.L(nil).Debug("Output plugin add event", zap.String("plugin", plugin))
 	loadOutput(plugin)
 }
 
 func reloadOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin reload", zap.String("plugin", plugin))
+	lg.L(nil).Debug("Output plugin reload event", zap.String("plugin", plugin))
 	loadOutput(plugin)
 }
 
 func renameOutput(from, to string) {
-	lg.L(nil).Debug("Output plugin rename", zap.String("from", from), zap.String("to", to))
+	lg.L(nil).Debug("Output plugin rename event", zap.String("from", from), zap.String("to", to))
 
 	outputs.l.RLock()
 	fn, ok := outputs.all[pluginName(from)]
@@ -119,7 +121,7 @@ func renameOutput(from, to string) {
 }
 
 func deleteOutput(plugin string) {
-	lg.L(nil).Debug("Output plugin delete", zap.String("plugin", plugin))
+	lg.L(nil).Debug("Output plugin delete event", zap.String("plugin", plugin))
 
 	outputs.l.Lock()
 	delete(outputs.all, pluginName(plugin))
