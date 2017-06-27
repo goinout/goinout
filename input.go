@@ -56,9 +56,11 @@ func startInputPlugins() {
 		loadPlugin(filepath.Join(inputsPath, file.Name()), loadInput)
 	}
 
-	inputs.l.RLock()
-	lg.L(nil).Info("inputs loaded", zap.Any("plugins", reflect.ValueOf(inputs.all).MapKeys()))
-	inputs.l.RUnlock()
+	var loaded []string
+	for k := range inputs.all {
+		loaded = append(loaded, k)
+	}
+	lg.L(nil).Info("inputs loaded", zap.Strings("plugins", loaded))
 }
 
 // loadInput plugin and start

@@ -1,5 +1,5 @@
 hash: 212f07d1480cea8dd5104a3c6b0159f6137debff6af22d8561d729e929aa0ce1
-updated: 2017-06-26T17:55:44.3577064+08:00
+updated: 2017-06-27T15:05:24.3280545+08:00
 imports:
 - name: github.com/drkaka/lg
   version: 2da913ec4fcfd0f6774de89b4e24a5200a1845b2
@@ -21,7 +21,7 @@ imports:
   - internal/multierror
   - zapcore
 - name: golang.org/x/sys
-  version: c23410a886927bab8ca5e80b08af6a56faeb330d
+  version: f7928cfef4d09d1b080aa2b6fd3ca9ba1567c733
   subpackages:
   - unix
 testImports:

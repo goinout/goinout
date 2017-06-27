@@ -7,11 +7,11 @@
 
     //"git.enabled": false,
 
-    "go.buildOnSave": true,
-    "go.lintOnSave": true,
+    "go.buildOnSave": "workspace",
+    "go.lintOnSave": "workspace",
     "go.lintTool": "golint",
-    "go.docsTool": "gogetdoc",
-    "go.vetOnSave": true,
+    "go.docsTool": "godoc",
+    "go.vetOnSave": "workspace",
     "go.buildFlags": [],
     "go.lintFlags": [],
     "go.vetFlags": [],

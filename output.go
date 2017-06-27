@@ -53,7 +53,11 @@ func getOutputPlugins() {
 	}
 
 	outputs.l.RLock()
-	lg.L(nil).Info("outputs loaded", zap.Any("plugins", reflect.ValueOf(outputs.all).MapKeys()))
+	var loaded []string
+	for k := range outputs.all {
+		loaded = append(loaded, k)
+	}
+	lg.L(nil).Info("outputs loaded", zap.Strings("plugins", loaded))
 	outputs.l.RUnlock()
 }
 

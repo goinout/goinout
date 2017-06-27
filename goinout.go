@@ -59,7 +59,6 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 	if err := notify.Watch(folderPath, c, notify.InCloseWrite, notify.InDelete, notify.InMovedTo, notify.InMovedFrom); err != nil {
 		lg.L(nil).Panic("watcher wrong", zap.Error(err))
 	}
-	defer notify.Stop(c)
 
 	// Process events
 	go func() {
@@ -67,6 +66,7 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 			ei := <-c
 			fileName := filepath.Base(ei.Path())
 			name := pluginName(fileName)
+			lg.L(nil).Debug("file changed", zap.String("path", ei.Path()), zap.String("event", ei.Event().String()))
 
 			switch ei.Event() {
 			case notify.InDelete:
