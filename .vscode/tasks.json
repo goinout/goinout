@@ -4,7 +4,10 @@
     "isShellCommand": true,
     "showOutput": "always",
     "options": {
-        "cwd": "${fileDirname}"
+        "cwd": "${fileDirname}",
+        "env": {
+            "GOOS": "linux"
+        }
     },
     "tasks": [
         {

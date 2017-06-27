@@ -5,6 +5,7 @@ import:
 - package: github.com/urfave/cli
   version: ^1.19.1
 - package: github.com/rjeczalik/notify
+- package: golang.org/x/sys/unix
 testImport:
 - package: github.com/stretchr/testify
   subpackages:

@@ -5,12 +5,12 @@ import (
 	"plugin"
 	"strings"
 	"sync"
-
 	"time"
 
 	"github.com/drkaka/lg"
 	"github.com/rjeczalik/notify"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 )
 
 type loadFunc func(*plugin.Plugin, string)
@@ -98,9 +98,9 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 				} else {
 					// set to value
 					moving.l.Lock()
-					info := moving[cookie]
+					info := moving.all[cookie]
 					info.to = ei.Path()
-					moving[cookie] = info
+					moving.all[cookie] = info
 					moving.l.Unlock()
 
 					handleMoveing(&moving, cookie, load, delete, rename)
@@ -112,9 +112,9 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 				} else {
 					// set from value
 					moving.l.Lock()
-					info := moving[cookie]
+					info := moving.all[cookie]
 					info.from = ei.Path()
-					moving[cookie] = info
+					moving.all[cookie] = info
 					moving.l.Unlock()
 
 					handleMoveing(&moving, cookie, load, delete, rename)
@@ -126,16 +126,16 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 
 func handleMoveing(m *moves, ck uint32, load loadFunc, del func(string), ren func(string, string)) {
 	m.l.RLock()
-	info := m[ck]
+	info := m.all[ck]
 	m.l.RUnlock()
 
 	if info.from != "" && info.to != "" {
 		// rename event generated
-		rename(filepath.Base(pluginName(info.from)), filepath.Base(pluginName(info.to)))
+		ren(filepath.Base(pluginName(info.from)), filepath.Base(pluginName(info.to)))
 
 		// delete this record
 		m.l.Lock()
-		delete(m, ck)
+		delete(m.all, ck)
 		m.l.Unlock()
 	} else {
 		go func() {
@@ -148,7 +148,7 @@ func handleMoveing(m *moves, ck uint32, load loadFunc, del func(string), ren fun
 
 func finalCheck(m *moves, ck uint32, load loadFunc, del func(string), ren func(string, string)) {
 	m.l.RLock()
-	info, ok := m[cookie]
+	info, ok := m.all[ck]
 	m.l.RUnlock()
 
 	// the info still existed
@@ -163,7 +163,7 @@ func finalCheck(m *moves, ck uint32, load loadFunc, del func(string), ren func(s
 
 		// delete this record
 		m.l.Lock()
-		delete(m, ck)
+		delete(m.all, ck)
 		m.l.Unlock()
 	}
 }
