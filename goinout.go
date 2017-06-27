@@ -4,6 +4,9 @@ import (
 	"path/filepath"
 	"plugin"
 	"strings"
+	"sync"
+
+	"time"
 
 	"github.com/drkaka/lg"
 	"github.com/rjeczalik/notify"
@@ -11,6 +14,17 @@ import (
 )
 
 type loadFunc func(*plugin.Plugin, string)
+
+// move event
+type move struct {
+	from string
+	to   string
+}
+
+type moves struct {
+	all map[uint32]move
+	l   *sync.RWMutex
+}
 
 // Start the service
 func Start(input, output string) {
@@ -62,6 +76,10 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 
 	// Process events
 	go func() {
+		moving := moves{
+			all: make(map[uint32]move),
+			l:   new(sync.RWMutex),
+		}
 		for {
 			ei := <-c
 			fileName := filepath.Base(ei.Path())
@@ -74,20 +92,78 @@ func observe(folderPath string, load loadFunc, delete func(string), rename func(
 			case notify.InCloseWrite:
 				loadPlugin(ei.Path(), load)
 			case notify.InMovedTo:
-				// Rename event should have a follow-up InMovedFrom event
-				fromEV := <-c
-				if fromEV.Event() != notify.InMovedFrom {
-					lg.L(nil).Error("Expecting create event", zap.Any("event", fromEV))
+				cookie := ei.Sys().(*unix.InotifyEvent).Cookie
+				if cookie == uint32(0) {
+					lg.L(nil).Error("cookie is 0", zap.Any("event", ei))
 				} else {
-					from := pluginName(filepath.Base(fromEV.Path()))
-					if extOK(from) {
-						rename(from, name)
-					}
+					// set to value
+					moving.l.Lock()
+					info := moving[cookie]
+					info.to = ei.Path()
+					moving[cookie] = info
+					moving.l.Unlock()
+
+					handleMoveing(&moving, cookie, load, delete, rename)
 				}
 			case notify.InMovedFrom:
-				// actually a delete event, because maybe move to Trash
-				delete(name)
+				cookie := ei.Sys().(*unix.InotifyEvent).Cookie
+				if cookie == uint32(0) {
+					lg.L(nil).Error("cookie is 0", zap.Any("event", ei))
+				} else {
+					// set from value
+					moving.l.Lock()
+					info := moving[cookie]
+					info.from = ei.Path()
+					moving[cookie] = info
+					moving.l.Unlock()
+
+					handleMoveing(&moving, cookie, load, delete, rename)
+				}
 			}
 		}
 	}()
+}
+
+func handleMoveing(m *moves, ck uint32, load loadFunc, del func(string), ren func(string, string)) {
+	m.l.RLock()
+	info := m[ck]
+	m.l.RUnlock()
+
+	if info.from != "" && info.to != "" {
+		// rename event generated
+		rename(filepath.Base(pluginName(info.from)), filepath.Base(pluginName(info.to)))
+
+		// delete this record
+		m.l.Lock()
+		delete(m, ck)
+		m.l.Unlock()
+	} else {
+		go func() {
+			// final check after 0.5s, because move job can be done between different folders
+			<-time.After(500 * time.Millisecond)
+			finalCheck(m, ck, load, del, ren)
+		}()
+	}
+}
+
+func finalCheck(m *moves, ck uint32, load loadFunc, del func(string), ren func(string, string)) {
+	m.l.RLock()
+	info, ok := m[cookie]
+	m.l.RUnlock()
+
+	// the info still existed
+	if ok {
+		if info.to != "" {
+			// to not empty means file moved to this place
+			loadPlugin(info.to, load)
+		} else if info.from != "" {
+			// from not empty means the file moved away
+			del(filepath.Base(pluginName(info.from)))
+		}
+
+		// delete this record
+		m.l.Lock()
+		delete(m, ck)
+		m.l.Unlock()
+	}
 }
