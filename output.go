@@ -66,6 +66,7 @@ func getOutputFunc(name string) func(map[string]interface{}) error {
 	fn := outputs.all[name]
 	outputs.l.RUnlock()
 
+	lg.L(nil).Debug("get output", zap.Any("plugin", reflect.TypeOf(fn)))
 	return fn
 }
 

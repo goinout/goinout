@@ -74,7 +74,7 @@ func loadInput(plug *plugin.Plugin, name string) {
 		return
 	}
 
-	exchangeCtx, ok := fn.(func(context.Context) context.Context)
+	exchangeCtx, ok := fn.(func(interface{}) interface{})
 	if !ok {
 		lg.L(nil).Debug("wrong input Exchange type", zap.Any("type", reflect.TypeOf(fn)))
 		lg.L(nil).Warn(ErrInputTypeWrong.Error())
@@ -108,12 +108,19 @@ func loadInput(plug *plugin.Plugin, name string) {
 			// wait until done
 			<-old.ctx.Done()
 		}
+		lg.L(nil).Debug("old input stopped", zap.String("plugin", name))
 	}
-	lg.L(nil).Debug("old input stopped", zap.String("plugin", name))
 
 	// create the new one
 	inputContext, cancelFunc := context.WithCancel(context.Background())
-	stopContext := exchangeCtx(inputContext)
+
+	var stopContext context.Context
+	if ctx := exchangeCtx(inputContext); ctx != nil {
+		if stopContext, ok = ctx.(context.Context); !ok {
+			lg.L(nil).Warn("exchanged context from input wrong")
+			return
+		}
+	}
 
 	inputs.l.Lock()
 	inputs.all[name] = &inputRecord{
