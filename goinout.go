@@ -60,6 +60,10 @@ func loadPlugin(file string, load loadFunc) {
 
 	p, err := plugin.Open(file)
 	if err != nil {
+		if strings.Contains(err.Error(), "plugin already loaded") {
+			lg.L(nil).Warn(err.Error(), zap.String("file", file))
+			return
+		}
 		lg.L(nil).Error("open file wrong", zap.Error(err))
 		return
 	}
